@@ -46,6 +46,8 @@ import Instructions from './src/components/Instructions';
 import { styles } from './src/constants/styles';
 import { checkServerStatus, fetchPendingEvents, sendFeedback, marcarNotificado } from './src/utils/api';
 import { configureSensors, subscribeSensors, unsubscribeSensors, processSensorData, classifyMovement } from './src/utils/sensorUtils';
+import { requestCriticalPermissions, handleEmergencyAutomatic, requestBatteryOptimizationExemption } from './src/utils/emergencyService';
+import { startBackgroundService, stopBackgroundService } from './src/utils/backgroundService';
 
 // Definir el nombre de la tarea de background
 const BACKGROUND_LOCATION_TASK = 'background-location-task';
@@ -532,24 +534,30 @@ const App = () => {
       };
       loadEmergencyData();
 
-   const checkPermissions = async () => {
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert('Permiso requerido', 'Se necesitan permisos para notificaciones.');
-  }
+      const checkPermissions = async () => {
+        // Solicitar permisos críticos para funcionamiento automático
+        await requestCriticalPermissions();
+        
+        // Solicitar exclusión de optimización de batería
+        await requestBatteryOptimizationExemption();
+        
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permiso requerido', 'Se necesitan permisos para notificaciones.');
+        }
 
-  const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-  if (fgStatus !== 'granted') {
-    Alert.alert('Error', 'Permiso para ubicación en primer plano denegado.');
-    return;
-  }
+        const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+        if (fgStatus !== 'granted') {
+          Alert.alert('Error', 'Permiso para ubicación en primer plano denegado.');
+          return;
+        }
 
-  const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-  if (bgStatus !== 'granted') {
-    Alert.alert('Error', 'Permiso para ubicación en segundo plano denegado.');
-    return;
-  }
-};
+        const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+        if (bgStatus !== 'granted') {
+          Alert.alert('Error', 'Permiso para ubicación en segundo plano denegado.');
+          return;
+        }
+      };
       checkPermissions();
 
       return () => {
@@ -688,36 +696,53 @@ Por favor, contacte inmediatamente.
   };
 
   const handleEmergency = async (clasificacion) => {
-    if (emergencyContacts.length === 0) {
-      Alert.alert('Error', 'No hay contactos de emergencia configurados.');
-      return;
+    try {
+      if (emergencyContacts.length === 0) {
+        Alert.alert('Error', 'No hay contactos de emergencia configurados.');
+        return;
+      }
+
+      // Activar vibración y notificación háptica
+      Vibration.vibrate([500, 500, 500, 500], true);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+      // Mostrar notificación superpuesta con ficha médica
+      const clasificacionText = clasificacion === 'caída de teléfono' ? 'una caída' : 'un accidente';
+      const content = {
+        title: '🚨 ¡EMERGENCIA DETECTADA!',
+        body: `Se ha detectado ${clasificacionText}. Tienes 10 segundos para cancelar. Se enviará automáticamente SMS y llamada.`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        categoryIdentifier: 'emergency',
+        data: { clasificacion },
+      };
+      const identifier = await Notifications.scheduleNotificationAsync({ 
+        content, 
+        trigger: null 
+      });
+
+      // Timer para activar emergencia automática
+      const timer = setTimeout(async () => {
+        console.log('Activando emergencia automática...');
+        const result = await handleEmergencyAutomatic(clasificacion);
+        console.log('Resultado emergencia automática:', result);
+        
+        Vibration.cancel();
+        await Notifications.dismissNotificationAsync(identifier);
+        
+        // Mostrar resultado al usuario
+        Alert.alert(
+          'Emergencia Activada',
+          `SMS enviados: ${result.smsSuccess ? 'Sí' : 'No'}\nLlamada iniciada: ${result.callSuccess ? 'Sí' : 'No'}`,
+          [{ text: 'OK' }]
+        );
+      }, 10000); // 10 segundos para cancelar
+
+      setEmergencyTimer(timer);
+    } catch (error) {
+      console.error('Error en handleEmergency:', error);
+      Alert.alert('Error', 'Error al procesar la emergencia: ' + error.message);
     }
-
-    // Activar vibración y notificación háptica
-    Vibration.vibrate([500, 500, 500, 500], true);
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-
-    // Mostrar notificación superpuesta con ficha médica (aparece en pantalla bloqueada)
-    const clasificacionText = clasificacion === 'caída de teléfono' ? 'una caída' : 'un accidente';
-    const content = {
-      title: '¡Emergencia detectada!',
-      body: `Se ha detectado ${clasificacionText}. Tienes 5 segundos para cancelar.\n\n${formatMedicalInfo(clasificacion)}`,
-      sound: 'default',
-      priority: Notifications.AndroidNotificationPriority.MAX,
-      categoryIdentifier: 'emergency',
-      data: { clasificacion },
-    };
-    const trigger = null; // Inmediata
-    const identifier = await Notifications.scheduleNotificationAsync({ content, trigger });
-
-    // Timer para enviar notificaciones a contactos
-    const timer = setTimeout(async () => {
-      await sendEmergencyNotifications(clasificacion);
-      Vibration.cancel();
-      await Notifications.dismissNotificationAsync(identifier);
-    }, 5000);
-
-    setEmergencyTimer(timer);
   };
 
   const toggleMonitoringHandler = async () => {
@@ -726,6 +751,7 @@ Por favor, contacte inmediatamente.
     if (isMonitoring) {
       console.log('Stopping monitoring...');
       unsubscribeSensors(subscriptionAcc, subscriptionGyro, setSubscriptionAcc, setSubscriptionGyro);
+      await stopBackgroundService();
       if (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
         await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       }
@@ -740,6 +766,11 @@ Por favor, contacte inmediatamente.
       console.log('Monitoring stopped');
     } else {
       console.log('Starting monitoring...');
+      
+      // Iniciar servicio en segundo plano
+      const backgroundStarted = await startBackgroundService();
+      console.log('Background service started:', backgroundStarted);
+      
       // Solicitar permisos para ubicación
       try {
         const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
