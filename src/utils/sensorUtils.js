@@ -7,8 +7,14 @@ import { sendFeedback, checkServerStatus, fetchPendingEvents, marcarNotificado }
 
 export const configureSensors = () => {
   console.log('Configuring sensors...');
-  Sensors.Accelerometer.setUpdateInterval(500);
-  Sensors.Gyroscope.setUpdateInterval(500);
+  try {
+    Sensors.Accelerometer.setUpdateInterval(500);
+    Sensors.Gyroscope.setUpdateInterval(500);
+    console.log('Sensors configured successfully');
+  } catch (error) {
+    console.error('Error configuring sensors:', error);
+    throw error;
+  }
 };
 
 export const subscribeSensors = (
@@ -27,27 +33,36 @@ export const subscribeSensors = (
   setSubscriptionAcc,
   setSubscriptionGyro
 ) => {
-  const accSubscription = Sensors.Accelerometer.addListener((accelerometerData) => {
-    setAccelerometerData(accelerometerData);
-    processSensorData(
-      accelerometerData,
-      gyroscopeData,
-      lastProcessedTime,
-      setLastProcessedTime,
-      classifyMovement,
-      serverStatus,
-      setLoading,
-      setResult,
-      setDataHistory
-    );
-  });
+  console.log('Subscribing to sensors...');
+  
+  try {
+    const accSubscription = Sensors.Accelerometer.addListener((accelerometerData) => {
+      setAccelerometerData(accelerometerData);
+      processSensorData(
+        accelerometerData,
+        gyroscopeData,
+        lastProcessedTime,
+        setLastProcessedTime,
+        classifyMovement,
+        serverStatus,
+        setLoading,
+        setResult,
+        setDataHistory
+      );
+    });
 
-  const gyroSubscription = Sensors.Gyroscope.addListener((gyroscopeData) => {
-    setGyroscopeData(gyroscopeData);
-  });
+    const gyroSubscription = Sensors.Gyroscope.addListener((gyroscopeData) => {
+      setGyroscopeData(gyroscopeData);
+    });
 
-  setSubscriptionAcc(accSubscription);
-  setSubscriptionGyro(gyroSubscription);
+    setSubscriptionAcc(accSubscription);
+    setSubscriptionGyro(gyroSubscription);
+    
+    console.log('Sensor subscriptions created successfully');
+  } catch (error) {
+    console.error('Error subscribing to sensors:', error);
+    throw error;
+  }
 };
 
 export const unsubscribeSensors = (subscriptionAcc, subscriptionGyro, setSubscriptionAcc, setSubscriptionGyro) => {

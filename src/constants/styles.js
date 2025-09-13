@@ -481,6 +481,13 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: normalizeSize(14),
   },
+  warningText: {
+    color: '#f59e0b',
+    fontSize: normalizeSize(10),
+    fontWeight: '500',
+    marginTop: normalizeSize(4),
+    textAlign: 'center',
+  },
   // Estados de color
   statusConnected: {
     color: '#10b981',

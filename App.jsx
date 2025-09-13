@@ -721,7 +721,10 @@ Por favor, contacte inmediatamente.
   };
 
   const toggleMonitoringHandler = async () => {
+    console.log('toggleMonitoringHandler called - isMonitoring:', isMonitoring);
+    
     if (isMonitoring) {
+      console.log('Stopping monitoring...');
       unsubscribeSensors(subscriptionAcc, subscriptionGyro, setSubscriptionAcc, setSubscriptionGyro);
       if (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
         await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
@@ -734,70 +737,87 @@ Por favor, contacte inmediatamente.
       setEmergencyTimer(null);
       await AsyncStorage.removeItem('previousSpeed');
       await AsyncStorage.removeItem('previousTimestamp');
+      console.log('Monitoring stopped');
     } else {
+      console.log('Starting monitoring...');
       // Solicitar permisos para ubicación
-      const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-      if (fgStatus !== 'granted') {
-        Alert.alert('Error', 'Permiso para ubicación denegado.');
-        return;
-      }
-      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-      if (bgStatus !== 'granted') {
-        Alert.alert('Error', 'Permiso para ubicación en segundo plano denegado.');
-        return;
-      }
-
-      // Iniciar actualizaciones de ubicación en background
-      await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-        accuracy: Location.Accuracy.Highest,
-        timeInterval: 1000, // Cada segundo
-        distanceInterval: 0,
-        deferredUpdatesInterval: 1000,
-        activityType: Location.ActivityType.AutomotiveNavigation,
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-          notificationTitle: 'Detección activa',
-          notificationBody: 'La app está monitoreando en segundo plano para detectar accidentes.',
-          notificationColor: '#FF0000',
-        },
-      });
-
-      subscribeSensors(
-        setAccelerometerData,
-        setGyroscopeData,
-        accelerometerData,
-        gyroscopeData,
-        processSensorData,
-        lastProcessedTime,
-        setLastProcessedTime,
-        (accData, gyroData, timestamp) => {
-          const classificationResult = classifyMovement(
-            accData,
-            gyroData,
-            timestamp,
-            serverStatus,
-            setLoading,
-            setResult,
-            setDataHistory,
-            setFeedbackLoading,
-            marcarNotificado,
-            fetchPendingEvents,
-            setPendingEvents
-          );
-          if (classificationResult?.clasificacion === 'caída de teléfono' || classificationResult?.clasificacion === 'accidente vehicular') {
-            handleEmergency(classificationResult.clasificacion);
+      try {
+        const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+        if (fgStatus !== 'granted') {
+          console.log('Foreground location permission denied, continuing with sensors only');
+          Alert.alert('Advertencia', 'Permiso para ubicación denegado. Solo se usarán sensores de movimiento.');
+        } else {
+          const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+          if (bgStatus !== 'granted') {
+            console.log('Background location permission denied, continuing with foreground only');
+            Alert.alert('Advertencia', 'Permiso para ubicación en segundo plano denegado. Funcionalidad limitada.');
+          } else {
+            // Iniciar actualizaciones de ubicación en background solo si tenemos permisos
+            await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+              accuracy: Location.Accuracy.Highest,
+              timeInterval: 1000,
+              distanceInterval: 0,
+              deferredUpdatesInterval: 1000,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+              showsBackgroundLocationIndicator: true,
+              foregroundService: {
+                notificationTitle: 'Detección activa',
+                notificationBody: 'La app está monitoreando en segundo plano para detectar accidentes.',
+                notificationColor: '#FF0000',
+              },
+            });
+            console.log('Background location updates started');
           }
-          return classificationResult;
-        },
-        serverStatus,
-        setLoading,
-        setResult,
-        setDataHistory,
-        setSubscriptionAcc,
-        setSubscriptionGyro
-      );
-      setIsMonitoring(true);
-      setResult(null);
+        }
+      } catch (error) {
+        console.error('Error requesting location permissions:', error);
+        Alert.alert('Advertencia', 'Error con permisos de ubicación. Continuando solo con sensores.');
+      }
+
+      // Iniciar sensores (esto siempre debería funcionar)
+      try {
+        console.log('Starting sensor subscriptions...');
+        subscribeSensors(
+          setAccelerometerData,
+          setGyroscopeData,
+          accelerometerData,
+          gyroscopeData,
+          processSensorData,
+          lastProcessedTime,
+          setLastProcessedTime,
+          (accData, gyroData, timestamp) => {
+            const classificationResult = classifyMovement(
+              accData,
+              gyroData,
+              timestamp,
+              serverStatus,
+              setLoading,
+              setResult,
+              setDataHistory,
+              setFeedbackLoading,
+              marcarNotificado,
+              fetchPendingEvents,
+              setPendingEvents
+            );
+            if (classificationResult?.clasificacion === 'caída de teléfono' || classificationResult?.clasificacion === 'accidente vehicular') {
+              handleEmergency(classificationResult.clasificacion);
+            }
+            return classificationResult;
+          },
+          serverStatus,
+          setLoading,
+          setResult,
+          setDataHistory,
+          setSubscriptionAcc,
+          setSubscriptionGyro
+        );
+        setIsMonitoring(true);
+        setResult(null);
+        console.log('Monitoring started successfully');
+      } catch (error) {
+        console.error('Error starting sensors:', error);
+        Alert.alert('Error', 'No se pudieron iniciar los sensores: ' + error.message);
+      }
     }
   };
 
