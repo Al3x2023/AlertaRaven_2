@@ -1,0 +1,119 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.alejandro970511.AlertaRaven">
+
+    <!-- Permisos básicos -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- Permisos de ubicación -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    
+    <!-- Permisos para servicios en segundo plano -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    
+    <!-- Permisos para llamadas automáticas -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.CALL_PRIVILEGED" />
+    
+    <!-- Permisos para SMS automáticos -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    
+    <!-- Permisos para contactos -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    
+    <!-- Permisos para notificaciones -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Permisos para sensores -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    
+    <!-- Características requeridas -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="true" />
+    <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="true" />
+
+    <application
+        android:name=".MainApplication"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:theme="@style/AppTheme"
+        android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true">
+        
+        <!-- Actividad principal -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.App.SplashScreen"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        
+        <!-- Servicio en segundo plano para detección de emergencias -->
+        <service
+            android:name=".EmergencyDetectionService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location|dataSync">
+        </service>
+        
+        <!-- Receptor para reiniciar el servicio -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Receptor para llamadas de emergencia -->
+        <receiver
+            android:name=".EmergencyCallReceiver"
+            android:enabled="true"
+            android:exported="false">
+        </receiver>
+        
+        <!-- Actividad para mostrar alertas sobre otras apps -->
+        <activity
+            android:name=".EmergencyAlertActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:exported="false">
+        </activity>
+        
+        <!-- Configuración de Expo -->
+        <activity android:name="com.facebook.react.devsupport.DevSettingsActivity" />
+        
+        <!-- Configuración para notificaciones -->
+        <meta-data
+            android:name="expo.modules.notifications.default_notification_icon"
+            android:resource="@drawable/notification_icon" />
+        <meta-data
+            android:name="expo.modules.notifications.default_notification_color"
+            android:resource="@color/notification_color" />
+            
+        <!-- Configuración para ubicación en segundo plano -->
+        <meta-data
+            android:name="expo.modules.location.background_location_service"
+            android:value="true" />
+    </application>
+</manifest>
